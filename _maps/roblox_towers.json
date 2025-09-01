@@ -1,0 +1,11 @@
+{
+    "map_name": "Roblox Towers",
+    "map_path": "map_files/roblox_towers.dmm",
+    "map_file": "roblox_towers.dmm",
+	"quickbuilds": 1000,
+	"armor": "urban",
+	"announce_text": "TBD",
+	"traits":[{
+		"Baseturf": "/turf/open/floor/plating"
+	}]
+}
