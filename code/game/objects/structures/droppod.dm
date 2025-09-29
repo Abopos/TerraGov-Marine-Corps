@@ -53,7 +53,7 @@ GLOBAL_DATUM(droppod_reservation, /datum/turf_reservation/transit/droppod)
 	interaction_actions += new /datum/action/innate/set_drop_target(src)
 	interaction_actions += new /datum/action/innate/launch_droppod(src)
 	RegisterSignals(SSdcs, list(COMSIG_GLOB_DROPSHIP_HIJACKED, COMSIG_GLOB_CAMPAIGN_MISSION_ENDED, COMSIG_GLOB_CAMPAIGN_DISABLE_DROPPODS), PROC_REF(disable_launching))
-	RegisterSignals(SSdcs, list(COMSIG_GLOB_OPEN_TIMED_SHUTTERS_LATE, COMSIG_GLOB_OPEN_TIMED_SHUTTERS_XENO_HIVEMIND, COMSIG_GLOB_OPEN_SHUTTERS_EARLY, COMSIG_GLOB_TADPOLE_LAUNCHED, COMSIG_GLOB_CAMPAIGN_ENABLE_DROPPODS), PROC_REF(allow_drop))
+	RegisterSignals(SSdcs, list(COMSIG_GLOB_OPEN_TIMED_SHUTTERS_LATE, COMSIG_GLOB_OPEN_SHUTTERS_EARLY, COMSIG_GLOB_TADPOLE_LAUNCHED, COMSIG_GLOB_CAMPAIGN_ENABLE_DROPPODS), PROC_REF(allow_drop))
 	RegisterSignal(SSdcs, COMSIG_GLOB_CAMPAIGN_MISSION_LOADED, PROC_REF(change_targeted_z))
 	GLOB.droppod_list += src
 	update_icon()
@@ -71,6 +71,9 @@ GLOBAL_DATUM(droppod_reservation, /datum/turf_reservation/transit/droppod)
 	GLOB.droppod_list -= src
 	return ..()
 
+/obj/structure/droppod/can_z_move(direction, turf/start, turf/destination, z_move_flags, mob/living/rider)
+	z_move_flags |= ZMOVE_ALLOW_ANCHORED
+	return ..()
 
 /obj/structure/droppod/attack_powerloader(mob/living/user, obj/item/powerloader_clamp/attached_clamp)
 	for(var/atom/movable/ejectee AS in buckled_mobs) // dump them out, just in case no mobs get deleted
@@ -93,7 +96,7 @@ GLOBAL_DATUM(droppod_reservation, /datum/turf_reservation/transit/droppod)
 	operation_started = TRUE
 	launch_allowed = TRUE
 	update_icon()
-	UnregisterSignal(SSdcs, list(COMSIG_GLOB_OPEN_TIMED_SHUTTERS_LATE, COMSIG_GLOB_OPEN_TIMED_SHUTTERS_XENO_HIVEMIND, COMSIG_GLOB_OPEN_SHUTTERS_EARLY, COMSIG_GLOB_TADPOLE_LAUNCHED))
+	UnregisterSignal(SSdcs, list(COMSIG_GLOB_OPEN_TIMED_SHUTTERS_LATE, COMSIG_GLOB_OPEN_SHUTTERS_EARLY, COMSIG_GLOB_TADPOLE_LAUNCHED))
 
 /obj/structure/droppod/update_icon()
 	. = ..()
@@ -270,6 +273,7 @@ GLOBAL_DATUM(droppod_reservation, /datum/turf_reservation/transit/droppod)
 	playsound(src, 'sound/effects/escape_pod_launch.ogg', 70)
 	playsound(src, 'sound/effects/droppod_launch.ogg', 70)
 	var/list/free_spaces = GLOB.droppod_reservation.reserved_turfs - GLOB.droppod_reservation.taken_turfs
+	free_spaces -= GLOB.droppod_reservation.pre_cordon_turfs
 	var/turf/selectedturf = pick(free_spaces)
 	if(!selectedturf)
 		CRASH("No droppod free turf found")
@@ -278,7 +282,7 @@ GLOBAL_DATUM(droppod_reservation, /datum/turf_reservation/transit/droppod)
 	addtimer(CALLBACK(src, PROC_REF(finish_drop), user, selectedturf), ROUND_UP(DROPPOD_TRANSIT_TIME * ((GLOB.current_orbit + 3) / 6)))
 
 	var/turf/target = locate(target_x, target_y, 2)
-	var/obj/effect/overlay/blinking_laser/marine/pod_warning/laserpod = new /obj/effect/overlay/blinking_laser/marine/pod_warning(target)
+	var/obj/effect/overlay/blinking_laser/marine/pod_warning/laserpod = new (target)
 	laserpod.dir = target
 	QDEL_IN(laserpod, DROPPOD_TRANSIT_TIME + 1)
 
@@ -331,7 +335,7 @@ GLOBAL_DATUM(droppod_reservation, /datum/turf_reservation/transit/droppod)
 	. = ..()
 	if(!.)
 		return
-	if(TIMER_COOLDOWN_CHECK(src, COOLDOWN_DROPPOD_TARGETTING))
+	if(TIMER_COOLDOWN_RUNNING(src, COOLDOWN_DROPPOD_TARGETTING))
 		addtimer(CALLBACK(src, TYPE_PROC_REF(/atom, balloon_alert), buckled_mobs[1], "Target Assignment cooldown"), 7)
 		return
 	// this isnt the cheapest thing in the world so lets not let players spam it
@@ -566,7 +570,7 @@ GLOBAL_DATUM(droppod_reservation, /datum/turf_reservation/transit/droppod)
 	///Locks activating this action again while choosing to prevent signal shenanigan runtimes.
 	var/choosing = FALSE
 
-/datum/action/innate/set_drop_target/can_use_action()
+/datum/action/innate/set_drop_target/can_use_action(silent, override_flags, selecting)
 	if(choosing)
 		return FALSE
 	return ..()

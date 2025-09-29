@@ -133,7 +133,7 @@
 		to_chat(ui_user, span_warning("The mothership is too far away from the theatre of operation, we cannot take off."))
 		return
 	#endif
-	if(TIMER_COOLDOWN_CHECK(src, COOLDOWN_TADPOLE_LAUNCHING))
+	if(TIMER_COOLDOWN_RUNNING(src, COOLDOWN_TADPOLE_LAUNCHING))
 		to_chat(ui_user, span_warning("The dropship's engines are not ready yet"))
 		return
 	TIMER_COOLDOWN_START(src, COOLDOWN_TADPOLE_LAUNCHING, launching_delay) // To stop spamming
@@ -148,6 +148,10 @@
 		next_fly_state = SHUTTLE_IN_SPACE
 		destination_fly_state = SHUTTLE_IN_ATMOSPHERE
 	SSshuttle.moveShuttleToTransit(shuttleId, TRUE)
+
+// Toggle the podlock shutters from the shuttle computer
+/obj/machinery/computer/camera_advanced/shuttle_docker/minidropship/proc/toggle_shutters()
+	SEND_GLOBAL_SIGNAL(COMSIG_GLOB_TADPOLE_SHUTTER)
 
 ///The action of sending the shuttle back to its shuttle port on main ship
 /obj/machinery/computer/camera_advanced/shuttle_docker/minidropship/proc/return_to_ship()
@@ -294,6 +298,8 @@
 	switch(action)
 		if("take_off")
 			take_off()
+		if("toggle_shutters")
+			toggle_shutters()
 		if("return_to_ship")
 			return_to_ship()
 		if("toggle_nvg")

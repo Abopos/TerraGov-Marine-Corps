@@ -29,7 +29,7 @@
 	AddComponent(/datum/component/anti_juggling)
 	set_jump_component()
 
-/mob/living/carbon/human/proc/human_z_changed(datum/source, old_z, new_z)
+/mob/living/carbon/human/proc/human_z_changed(datum/source, old_z, new_z, same_z_layer)
 	SIGNAL_HANDLER
 	LAZYREMOVE(GLOB.humans_by_zlevel["[old_z]"], src)
 	LAZYADD(GLOB.humans_by_zlevel["[new_z]"], src)
@@ -605,19 +605,11 @@
 			to_chat(usr, span_warning("[src] is too far away."))
 			return
 
-		for(var/datum/data/record/medical_record in GLOB.datacore.medical)
-			if(!(medical_record.fields["name"] == real_name))
-				continue
-			if(medical_record.fields["last_scan_time"] && medical_record.fields["last_scan_result"])
-				var/datum/browser/popup = new(usr, "scanresults", "<div align='center'>Last Scan Result</div>", 430, 600)
-				popup.set_content(medical_record.fields["last_scan_result"])
-				popup.open(FALSE)
-			break
-
-	if(href_list["lookitem"])
-		var/obj/item/I = locate(href_list["lookitem"])
-		if(istype(I))
-			I.examine(usr)
+		var/datum/data/record/medical_record = find_medical_record(src)
+		if(isnull(medical_record))
+			return
+		var/datum/historic_scan/scan = medical_record.fields["historic_scan"]
+		scan.ui_interact(usr)
 
 	return ..()
 
@@ -934,6 +926,7 @@
 
 /mob/living/carbon/human/proc/randomize_appearance()
 	gender = pick(MALE, FEMALE)
+	physique = gender
 	name = species.random_name(gender)
 	real_name = name
 	voice = random_tts_voice()
@@ -990,13 +983,13 @@
 				g_facial = 0
 				b_facial = 0
 
-		h_style = random_hair_style(gender)
+		h_style = random_hair_style(physique)
 
 		switch(pick("none", "some"))
 			if("none")
 				f_style = "Shaved"
 			if("some")
-				f_style = random_facial_hair_style(gender)
+				f_style = random_facial_hair_style(physique)
 
 	switch(pick(15;"black", 15;"green", 15;"brown", 15;"blue", 15;"lightblue", 5;"red"))
 		if("black")
@@ -1130,7 +1123,7 @@
 /mob/living/carbon/human/attack_ghost(mob/dead/observer/user)
 	if(!user.health_scan)
 		return FALSE
-	user.health_analyzer.analyze_vitals(src, user)
+	user.scanner_functionality.analyze_vitals(src, user)
 	return TRUE
 
 ///Checks if we have an AI behavior active

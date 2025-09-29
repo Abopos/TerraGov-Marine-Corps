@@ -1,7 +1,7 @@
 /datum/game_mode/infestation/crash
 	name = "Crash"
 	config_tag = "Crash"
-	round_type_flags = MODE_INFESTATION|MODE_XENO_SPAWN_PROTECT|MODE_DEAD_GRAB_FORBIDDEN|MODE_DISALLOW_RAILGUN
+	round_type_flags = MODE_INFESTATION|MODE_XENO_SPAWN_PROTECT|MODE_DISALLOW_RAILGUN
 	xeno_abilities_flags = ABILITY_CRASH
 	valid_job_types = list(
 		/datum/job/terragov/squad/standard = -1,
@@ -20,9 +20,11 @@
 		/datum/job/terragov/squad/engineer = 5,
 		/datum/job/xenomorph = CRASH_LARVA_POINTS_NEEDED,
 	)
-	xenorespawn_time = 3 MINUTES
-	blacklist_ground_maps = list(MAP_BIG_RED, MAP_DELTA_STATION, MAP_LV_624, MAP_WHISKEY_OUTPOST, MAP_OSCAR_OUTPOST, MAP_FORT_PHOBOS, MAP_CHIGUSA, MAP_LAVA_OUTPOST, MAP_CORSAT, MAP_KUTJEVO_REFINERY, MAP_BLUESUMMERS)
+	respawn_time = 15 MINUTES
+	blacklist_ground_maps = list(MAP_BIG_RED, MAP_DELTA_STATION, MAP_LV_624, MAP_WHISKEY_OUTPOST, MAP_OSCAR_OUTPOST, MAP_FORT_PHOBOS, MAP_CHIGUSA, MAP_LAVA_OUTPOST, MAP_CORSAT, MAP_KUTJEVO_REFINERY, MAP_BLUESUMMERS, MAP_PRISON_STATION)
 	tier_three_penalty = 1
+	tier_three_inclusion = TRUE
+	caste_swap_cooldown = 5 MINUTES
 	restricted_castes = list(/datum/xeno_caste/wraith, /datum/xeno_caste/hivemind)
 
 	// Round end conditions
@@ -44,7 +46,7 @@
 	evo_requirements = list(
 		/datum/xeno_caste/king = 14,
 		/datum/xeno_caste/queen = 10,
-		/datum/xeno_caste/hivelord = 8,
+		/datum/xeno_caste/hivelord = 5,
 	)
 
 /datum/game_mode/infestation/crash/pre_setup()
@@ -88,6 +90,9 @@
 	for(var/i in GLOB.xeno_resin_silo_turfs)
 		new /obj/structure/xeno/silo(i)
 		new /obj/structure/xeno/pherotower(i)
+
+	for(var/i in GLOB.xeno_spawner_turfs)
+		new /obj/structure/xeno/spawner(i, XENO_HIVE_NORMAL)
 
 	for(var/obj/effect/landmark/corpsespawner/corpse AS in GLOB.corpse_landmarks_list)
 		corpse.create_mob()
@@ -207,9 +212,9 @@
 		xeno_job.add_job_positions(1)
 		xeno_hive.update_tier_limits()
 		return
-	// Make sure there is at least one xeno regardless of ratio.
+	// Make sure there is at least two xenos regardless of ratio.
 	var/total_xenos = xeno_hive.get_total_xeno_number() + (xeno_job.total_positions - xeno_job.current_positions)
-	if(!total_xenos)
+	if(total_xenos < 2)
 		xeno_job.add_job_positions(1)
 		xeno_hive.update_tier_limits()
 
@@ -220,11 +225,17 @@
 	var/total_xenos = xeno_hive.get_total_xeno_number() + (xeno_job.total_positions - xeno_job.current_positions)
 	return get_total_joblarvaworth() - (total_xenos * xeno_job.job_points_needed)
 
-/datum/game_mode/infestation/crash/get_total_joblarvaworth(list/z_levels, count_flags)
+/datum/game_mode/infestation/crash/get_total_joblarvaworth(list/z_levels, count_flags = COUNT_IGNORE_HUMAN_SSD)
 	. = 0
 
 	for(var/mob/living/carbon/human/H AS in GLOB.human_mob_list)
 		if(!H.job)
+			continue
+		if((HAS_TRAIT(H, TRAIT_UNDEFIBBABLE))) // DNR'd humans don't count
+			continue
+		if(H.stat == DEAD && !H.has_working_organs())
+			continue
+		if(count_flags & COUNT_IGNORE_HUMAN_SSD && !H.client)
 			continue
 		if(isspaceturf(H.loc))
 			continue

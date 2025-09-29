@@ -15,7 +15,7 @@
 	action_icon = 'icons/Xeno/actions/wraith.dmi'
 	action_icon_state = "rewind"
 	ability_cost = 15
-	cooldown_duration = 3.5 SECONDS
+	cooldown_duration = 4.5 SECONDS
 	use_state_flags = ABILITY_USE_FORTIFIED
 	keybinding_signals = list(
 		KEYBINDING_NORMAL = COMSIG_XENOABILITY_CONQUEROR_DASH,
@@ -26,26 +26,75 @@
 	var/last_move_dir
 	/// The timing for activating a dash by double tapping a movement key.
 	var/double_tap_timing = 0.18 SECONDS
+	/// If this ability is in its alternative form, the amount of charges that Dash has. Otherwise, does nothing.
+	var/charges
+	/// The maximum amount of charges that can be restored. Do not set this directly. Use `set_maximum_charges` instead.
+	var/maximum_charges
+	/// The amount of deciseconds until a charge is restored.
+	var/charge_restoration_length
+	/// The timer ID of the charge restoration.
+	var/charge_restoration_timer
 
 /datum/action/ability/xeno_action/conqueror_dash/give_action(mob/living/L)
 	. = ..()
 	toggled = TRUE
 	set_toggle(TRUE)
 	enable_ability()
+	add_button_visuals()
+	restore_charge(0)
+	if(charge_restoration_timer)
+		START_PROCESSING(SSprocessing, src)
 
 /datum/action/ability/xeno_action/conqueror_dash/remove_action(mob/living/L)
 	toggled = FALSE
 	set_toggle(FALSE)
 	disable_ability()
+	remove_button_visuals()
+	if(datum_flags & DF_ISPROCESSING)
+		STOP_PROCESSING(SSprocessing, src)
+	if(charge_restoration_timer)
+		deltimer(charge_restoration_timer)
+		charge_restoration_timer = null
 	return ..()
 
-/datum/action/ability/xeno_action/conqueror_dash/can_use_action(silent, override_flags)
+/datum/action/ability/xeno_action/conqueror_dash/update_button_icon()
+	if(isnull(charges) || isnull(maximum_charges))
+		return ..()
+	button.cut_overlay(visual_references[VREF_MUTABLE_CONQ_DASH_CHARGES])
+	var/mutable_appearance/number = visual_references[VREF_MUTABLE_CONQ_DASH_CHARGES]
+	number.maptext = MAPTEXT("[charges]/[maximum_charges]")
+	visual_references[VREF_MUTABLE_CONQ_DASH_CHARGES] = number
+	button.add_overlay(visual_references[VREF_MUTABLE_CONQ_DASH_CHARGES])
+
+	button.cut_overlay(visual_references[VREF_MUTABLE_CONQ_DASH_CHARGETIMER])
+	var/mutable_appearance/time = visual_references[VREF_MUTABLE_CONQ_DASH_CHARGETIMER]
+	time.maptext = MAPTEXT("[timeleft(charge_restoration_timer) ? "[round(timeleft(charge_restoration_timer) / 10)]s" : ""]")
+	visual_references[VREF_MUTABLE_CONQ_DASH_CHARGETIMER] = time
+	button.add_overlay(visual_references[VREF_MUTABLE_CONQ_DASH_CHARGETIMER])
+	return ..()
+
+/datum/action/ability/xeno_action/conqueror_dash/can_use_action(silent, override_flags, selecting)
 	. = ..()
 	if(!.)
 		return
 	if(!xeno_owner.canmove)
 		return FALSE
+	if(xeno_owner.endurance_active)
+		return FALSE
+	if(maximum_charges && !charges)
+		return FALSE
 	return TRUE
+
+/datum/action/ability/xeno_action/conqueror_dash/process()
+	if(!charge_restoration_timer)
+		STOP_PROCESSING(SSprocessing, src)
+		button.cut_overlay(visual_references[VREF_MUTABLE_CONQ_DASH_CHARGETIMER])
+		return
+	button.cut_overlay(visual_references[VREF_MUTABLE_CONQ_DASH_CHARGETIMER])
+	var/mutable_appearance/time = visual_references[VREF_MUTABLE_CONQ_DASH_CHARGETIMER]
+	time.maptext = MAPTEXT("[timeleft(charge_restoration_timer) ? "[round(timeleft(charge_restoration_timer) / 10)]s" : ""]")
+	visual_references[VREF_MUTABLE_CONQ_DASH_CHARGETIMER] = time
+	button.add_overlay(visual_references[VREF_MUTABLE_CONQ_DASH_CHARGETIMER])
 
 /datum/action/ability/xeno_action/conqueror_dash/action_activate()
 	toggled = !toggled
@@ -77,11 +126,23 @@
 	SIGNAL_HANDLER
 	UnregisterSignal(xeno_owner, list(COMSIG_MOB_DEATH, COMSIG_KB_MOVEMENT_EAST_DOWN, COMSIG_KB_MOVEMENT_NORTH_DOWN, COMSIG_KB_MOVEMENT_SOUTH_DOWN, COMSIG_KB_MOVEMENT_WEST_DOWN))
 
-/// If the user dies, a check will be added in the case of revival, to reenable the ability.
+/// On death, disables the ability and stops charges from being restored. Registers a signal to deal with the owner's revival, if it were to happen.
 /datum/action/ability/xeno_action/conqueror_dash/proc/on_death()
 	SIGNAL_HANDLER
 	disable_ability()
-	RegisterSignal(xeno_owner, COMSIG_MOB_REVIVE, PROC_REF(enable_ability))
+	RegisterSignal(xeno_owner, COMSIG_MOB_REVIVE, PROC_REF(on_revive))
+	if(charge_restoration_timer)
+		deltimer(charge_restoration_timer)
+		charge_restoration_timer = null
+
+/// On revival, enables the ability. If it was using the charge system, start the timer to restore charges.
+/datum/action/ability/xeno_action/conqueror_dash/proc/on_revive()
+	SIGNAL_HANDLER
+	enable_ability()
+	UnregisterSignal(xeno_owner, COMSIG_MOB_REVIVE)
+	if(maximum_charges && !charge_restoration_timer)
+		restore_charge(0)
+		START_PROCESSING(SSprocessing, src)
 
 /// Checks if we can dash to the east.
 /datum/action/ability/xeno_action/conqueror_dash/proc/dash_east()
@@ -128,6 +189,9 @@
 	last_move_dir = null
 	add_cooldown()
 	succeed_activate()
+	if(charges)
+		restore_charge(-1)
+		START_PROCESSING(SSprocessing, src)
 	disable_ability() // Ability usage is disabled until the cooldown has concluded. This prevents signals from firing, for the purposes of performance efficiency.
 	addtimer(CALLBACK(src, PROC_REF(enable_ability)), cooldown_duration)
 
@@ -143,6 +207,72 @@
 	if(timing)
 		double_tap_timing = timing SECONDS
 	return COMSIG_KB_ACTIVATED
+
+/// Sets the maximum charges and how long it takes to restore charges. Will switch the ability away or to a charge-based system based on maximum charges.
+/datum/action/ability/xeno_action/conqueror_dash/proc/set_maximum_charges(new_maximum_charges = 0, restoration_length)
+	if(!charge_restoration_length && !restoration_length)
+		restoration_length = cooldown_duration
+	charge_restoration_length = restoration_length
+	if(maximum_charges == new_maximum_charges)
+		return
+	// We only support maximum charges that are two or higher. If it is changed to be under, it means we're no longer using the charge-system anymore.
+	if(new_maximum_charges < 2)
+		if(maximum_charges)
+			if(charges >= 1)
+				clear_cooldown()
+			charges = null
+			maximum_charges = null
+			charge_restoration_length = null
+			if(charge_restoration_timer)
+				deltimer(charge_restoration_timer)
+				charge_restoration_timer = null
+			remove_button_visuals()
+		return
+	// Switching from non-charges to charges.
+	if(!maximum_charges)
+		maximum_charges = new_maximum_charges
+		restore_charge(action_cooldown_finished() ? 1 : 0)
+		add_button_visuals()
+		return
+	maximum_charges = new_maximum_charges
+	restore_charge(0)
+
+/// Restores a certain amount of charges. If under the maximum charges, restart the timer.
+/datum/action/ability/xeno_action/conqueror_dash/proc/restore_charge(amount = 1)
+	charges = clamp(charges + amount, 0, maximum_charges)
+	update_button_icon()
+	if(charges >= maximum_charges)
+		deltimer(charge_restoration_timer)
+		charge_restoration_timer = null
+		return
+	if(!charge_restoration_timer || amount >= 1)
+		charge_restoration_timer = addtimer(CALLBACK(src, PROC_REF(restore_charge)), charge_restoration_length, TIMER_UNIQUE|TIMER_STOPPABLE)
+
+/// If the ability is using the charge system, adds various visuals to indicate current, maximum, and recharge time for charges.
+/datum/action/ability/xeno_action/conqueror_dash/proc/add_button_visuals()
+	if(isnull(charges) || isnull(maximum_charges))
+		return
+	var/mutable_appearance/counter_maptext = mutable_appearance(layer = ACTION_LAYER_MAPTEXT)
+	counter_maptext.pixel_x = 16
+	counter_maptext.pixel_y = -4
+	counter_maptext.maptext = MAPTEXT("[charges]/[maximum_charges]")
+	visual_references[VREF_MUTABLE_CONQ_DASH_CHARGES] = counter_maptext
+
+	var/mutable_appearance/timer_maptext = mutable_appearance(layer = ACTION_LAYER_MAPTEXT)
+	timer_maptext.pixel_x = 16
+	timer_maptext.pixel_y = 24
+	timer_maptext.maptext = MAPTEXT("[timeleft(charge_restoration_timer) ? "[round(timeleft(charge_restoration_timer) / 10)]s" : ""]")
+	visual_references[VREF_MUTABLE_CONQ_DASH_CHARGETIMER] = timer_maptext
+
+/// If the ability is not using the charge system, removes visuals used for charges.
+/datum/action/ability/xeno_action/conqueror_dash/proc/remove_button_visuals()
+	if(!isnull(charges) || !isnull(maximum_charges))
+		return
+	button.cut_overlay(visual_references[VREF_MUTABLE_CONQ_DASH_CHARGES])
+	visual_references[VREF_MUTABLE_CONQ_DASH_CHARGES] = null
+
+	button.cut_overlay(visual_references[VREF_MUTABLE_CONQ_DASH_CHARGETIMER])
+	visual_references[VREF_MUTABLE_CONQ_DASH_CHARGETIMER] = null
 
 /obj/effect/temp_visual/conqueror/dash_trail
 	icon = 'icons/effects/particles/conqueror.dmi'
@@ -200,6 +330,10 @@
 	var/reset_timer
 	/// Timer ID. Length of time after which the ability will warn the user of an impending reset.
 	var/warning_timer
+	/// On Jab's usage, the percentage of maximum health to heal.
+	var/jab_heal_percentage = 0
+	/// On Jab's usage, the multiplier of damage to deal.
+	var/jab_damage_multiplier = CONQUEROR_WILL_JAB_MULTIPLIER
 
 /datum/action/ability/activable/xeno/conqueror_will/give_action(mob/living/L)
 	. = ..()
@@ -305,13 +439,13 @@
 	SIGNAL_HANDLER
 	if(!iscarbon(living_target) || living_target.stat == DEAD || !living_target.can_xeno_slash(xeno_owner))
 		return
-	if(action_cooldown_check() && xeno_owner.selected_ability == src)
+	if(action_cooldown_finished() && xeno_owner.selected_ability == src)
 		combo_streak += isrightclick ? "R" : "L"
 		if(display_combos)
 			xeno_owner.hud_used?.combo_display.update_icon_state(combo_streak)
 	if(length(combo_streak) < CONQUEROR_WILL_MAX_COMBO)
 		no_combo(living_target)
-		if(action_cooldown_check() && xeno_owner.selected_ability == src)
+		if(action_cooldown_finished() && xeno_owner.selected_ability == src)
 			reset_timer = addtimer(CALLBACK(src, PROC_REF(reset_combo)), CONQUEROR_WILL_RESET_TIME, TIMER_UNIQUE|TIMER_OVERRIDE|TIMER_STOPPABLE)
 			warning_timer = addtimer(CALLBACK(xeno_owner, TYPE_PROC_REF(/mob, playsound_local), xeno_owner, 'sound/voice/hiss4.ogg', 25, TRUE), CONQUEROR_WILL_RESET_TIME - 2 SECONDS, TIMER_UNIQUE|TIMER_OVERRIDE|TIMER_STOPPABLE)
 		return
@@ -393,7 +527,11 @@
 	addtimer(CALLBACK(src, GLOBAL_PROC_REF(playsound), living_target, 'sound/effects/alien/conqueror/will_extra_3.ogg', 15, TRUE), 0.2 SECONDS, TIMER_CLIENT_TIME)
 	new /obj/effect/temp_visual/conqueror/hook/jab/initial(living_target.loc)
 	living_target.do_attack_animation(get_step(living_target, REVERSE_DIR(get_dir(living_target, xeno_owner))))
-	living_target.apply_damage((xeno_owner.xeno_caste.melee_damage * xeno_owner.xeno_melee_damage_modifier) * CONQUEROR_WILL_JAB_MULTIPLIER, BRUTE, xeno_owner.get_limb(xeno_owner.zone_selected), MELEE, TRUE, TRUE, TRUE, CONQUEROR_WILL_JAB_PENETRATION)
+	if(jab_damage_multiplier)
+		living_target.apply_damage((xeno_owner.xeno_caste.melee_damage * xeno_owner.xeno_melee_damage_modifier) * jab_damage_multiplier, BRUTE, xeno_owner.get_limb(xeno_owner.zone_selected), MELEE, TRUE, TRUE, TRUE, CONQUEROR_WILL_JAB_PENETRATION)
+	if(jab_heal_percentage)
+		var/health_to_heal = xeno_owner.xeno_caste.max_health * jab_heal_percentage
+		HEAL_XENO_DAMAGE(xeno_owner, health_to_heal, FALSE)
 	INVOKE_ASYNC(living_target, TYPE_PROC_REF(/mob, emote), "pain")
 
 /// A mighty kick that sends the target flying. If they collide with another atom, that atom is also affected.
@@ -427,11 +565,7 @@
 /// Ends the target's throw. Taken from Warrior code.
 /datum/action/ability/activable/xeno/conqueror_will/proc/kicked_end(datum/source)
 	SIGNAL_HANDLER
-	UnregisterSignal(source, COMSIG_MOVABLE_POST_THROW)
-	/* So the reason why we do not flat out unregister this is because, when an atom makes impact with something, it calls throw_impact(). Calling it this way causes
-	stop_throw() to be called in most cases, because impacts can cause a bounce effect and ending the throw makes it happen. Given the way we have signals setup, unregistering
-	it at that point would cause thrown_into() to never get called, and that is exactly the reason why the line of code below exists. */
-	addtimer(CALLBACK(src, TYPE_PROC_REF(/datum, UnregisterSignal), source, COMSIG_MOVABLE_IMPACT, COMSIG_MOVABLE_POST_THROW), 0.5)
+	UnregisterSignal(source, list(COMSIG_MOVABLE_POST_THROW, COMSIG_MOVABLE_IMPACT))
 	var/mob/living/living_target = source
 	living_target.Knockdown(CONQUEROR_WILL_COMBO_DEBUFF)
 	if(living_target.pass_flags & PASS_XENO)
@@ -523,7 +657,7 @@
 
 /datum/action/ability/xeno_action/conqueror_endurance/give_action(mob/living/L)
 	. = ..()
-	xeno_owner.endurance_health_max = xeno_owner.xeno_caste.max_health * 2
+	xeno_owner.endurance_health_max = xeno_owner.xeno_caste.max_health * 1.5
 	xeno_owner.endurance_health = xeno_owner.endurance_health_max
 	START_PROCESSING(SSprocessing, src)
 	particle_holder = new(xeno_owner, /particles/conqueror_endurance)
@@ -543,11 +677,13 @@
 		disable_ability()
 	return ..()
 
-/datum/action/ability/xeno_action/conqueror_endurance/can_use_action(silent, override_flags)
+/datum/action/ability/xeno_action/conqueror_endurance/can_use_action(silent, override_flags, selecting)
 	. = ..()
 	if(!.)
 		return
 	if(xeno_owner.endurance_broken)
+		return FALSE
+	if(xeno_owner.endurance_active)
 		return FALSE
 	return TRUE
 
@@ -574,7 +710,7 @@
 		return
 	if(xeno_owner.endurance_health >= xeno_owner.endurance_health_max)
 		return
-	if(!xeno_owner.loc_weeds_type && !(xeno_owner.xeno_caste.caste_flags & CASTE_INNATE_HEALING))
+	if(!xeno_owner.loc_weeds_type && !HAS_TRAIT(xeno_owner, TRAIT_INNATE_HEALING))
 		return
 	var/regen_amount = 1 + (xeno_owner.xeno_caste.max_health * 0.0375)
 	if(xeno_owner.recovery_aura)
@@ -598,7 +734,7 @@
 /datum/action/ability/xeno_action/conqueror_endurance/proc/enable_ability(keybind)
 	toggled = TRUE
 	set_toggle(TRUE)
-	xeno_owner.fortify = TRUE
+	xeno_owner.endurance_active = TRUE
 	xeno_owner.add_movespeed_modifier(MOVESPEED_ID_CONQUEROR_ENDURANCE, TRUE, 0, NONE, TRUE, CONQUEROR_ENDURANCE_SPEED_MODIFIER)
 	xeno_owner.xeno_caste.sunder_multiplier = CONQUEROR_ENDURANCE_SUNDER_MULTIPLIER
 	RegisterSignal(xeno_owner, COMSIG_MOB_DEATH, PROC_REF(disable_ability))
@@ -611,7 +747,7 @@
 	SIGNAL_HANDLER
 	toggled = FALSE
 	set_toggle(FALSE)
-	xeno_owner.fortify = FALSE
+	xeno_owner.endurance_active = FALSE
 	xeno_owner.remove_movespeed_modifier(MOVESPEED_ID_CONQUEROR_ENDURANCE)
 	xeno_owner.xeno_caste.sunder_multiplier = initial(xeno_owner.xeno_caste.sunder_multiplier)
 	add_cooldown()
@@ -683,17 +819,23 @@
 	keybinding_signals = list(
 		KEYBINDING_NORMAL = COMSIG_XENOABILITY_CONQUEROR_DOMINATION,
 	)
+	/// The radius of the area of effect.
+	var/radius = CONQUEROR_DOMINATION_EFFECT_RADIUS
+	/// The amount of deciseconds that the affected will be knocked down for.
+	var/knockdown_duration = CONQUEROR_DOMINATION_KNOCKDOWN
 
 /datum/action/ability/activable/xeno/conqueror_domination/on_cooldown_finish()
 	. = ..()
 	xeno_owner.playsound_local(xeno_owner, 'sound/effects/alien/new_larva.ogg', 30, 0)
 	xeno_owner.balloon_alert(xeno_owner, "[initial(name)] ready")
 
-/datum/action/ability/activable/xeno/conqueror_domination/can_use_action(silent, override_flags)
+/datum/action/ability/activable/xeno/conqueror_domination/can_use_action(silent, override_flags, selecting)
 	. = ..()
 	if(!.)
 		return
 	if(!xeno_owner.canmove)
+		return FALSE
+	if(xeno_owner.endurance_active)
 		return FALSE
 	return TRUE
 
@@ -712,9 +854,9 @@
 			break
 		valid_turfs += turf_to_check
 	check_distance = min(length(valid_turfs), check_distance)
-	var/list/turf/reappearance_turfs = filled_circle_turfs(valid_turfs[check_distance], CONQUEROR_DOMINATION_EFFECT_RADIUS)
+	var/list/turf/reappearance_turfs = filled_circle_turfs(valid_turfs[check_distance], radius)
 	for(var/turf/turf_to_affect AS in reappearance_turfs)
-		if(isclosedturf(turf_to_affect) || isspaceturf(turf_to_affect) || isspacearea(get_area(turf_to_affect)) || !line_of_sight(turf_target, turf_to_affect, CONQUEROR_DOMINATION_EFFECT_RADIUS, TRUE))
+		if(isclosedturf(turf_to_affect) || isspaceturf(turf_to_affect) || isspacearea(get_area(turf_to_affect)) || !line_of_sight(turf_target, turf_to_affect, radius, TRUE))
 			reappearance_turfs -= turf_to_affect
 			continue
 		new /obj/effect/temp_visual/behemoth/warning/conqueror(turf_to_affect, CONQUEROR_DOMINATION_CASTING_DELAY)
@@ -754,7 +896,7 @@
 				var/knockback_dist = clamp(CONQUEROR_DOMINATION_MAX_PUSH_RANGE - distance, 1, CONQUEROR_DOMINATION_MAX_PUSH_RANGE)
 				mob_target.knockback(xeno_owner, knockback_dist, 1)
 			var/mob/living/living_target = mob_target
-			living_target.Knockdown(CONQUEROR_DOMINATION_KNOCKDOWN)
+			living_target.Knockdown(knockdown_duration)
 			living_target.take_overall_damage(xeno_owner.xeno_caste.melee_damage * xeno_owner.xeno_melee_damage_modifier, xeno_owner.xeno_caste.melee_damage_type, MELEE, TRUE, TRUE, TRUE, xeno_owner.xeno_caste.melee_ap, 5)
 
 /obj/effect/temp_visual/conqueror/reappearance
@@ -816,11 +958,13 @@
 	xeno_owner.playsound_local(xeno_owner, 'sound/effects/alien/new_larva.ogg', 30, 0)
 	xeno_owner.balloon_alert(xeno_owner, "[initial(name)] ready")
 
-/datum/action/ability/xeno_action/conqueror_obliteration/can_use_action(silent, override_flags)
+/datum/action/ability/xeno_action/conqueror_obliteration/can_use_action(silent, override_flags, selecting)
 	. = ..()
 	if(!.)
 		return
 	if(!xeno_owner.canmove)
+		return FALSE
+	if(xeno_owner.endurance_active)
 		return FALSE
 	return TRUE
 
@@ -893,12 +1037,18 @@
 		end_ability()
 		return
 	for(var/turf/affected_turf AS in filled_circle_turfs(xeno_owner, ability_range))
-		for(var/mob/mob_target in affected_turf)
-			if(!isliving(mob_target) || mob_target.issamexenohive(xeno_owner) || mob_target.stat == DEAD || !line_of_sight(xeno_owner, mob_target, CONQUEROR_OBLITERATION_MAX_RANGE))
+		for(var/atom/movable/target in affected_turf)
+			if(target.issamexenohive(xeno_owner) || !line_of_sight(xeno_owner, target, CONQUEROR_OBLITERATION_MAX_RANGE))
 				continue
-			var/mob/living/living_target = mob_target
-			targets_to_attack += living_target
-			RegisterSignals(living_target, list(COMSIG_QDELETING, COMSIG_MOB_DEATH, COMSIG_MOVABLE_Z_CHANGED), PROC_REF(clear_ref))
+			if(isliving(target))
+				var/mob/living/living_target = target
+				if(living_target.stat == DEAD)
+					continue
+			//only attack mobs and vehicles
+			else if(!isvehicle(target))
+				continue
+			targets_to_attack += target
+			RegisterSignals(target, list(COMSIG_QDELETING, COMSIG_MOB_DEATH, COMSIG_MOVABLE_Z_CHANGED), PROC_REF(clear_ref))
 	if(!length(targets_to_attack))
 		end_ability()
 		return
@@ -918,24 +1068,30 @@
 
 /// Attacks all eligible targets, inflicting damage and creating visuals.
 /datum/action/ability/xeno_action/conqueror_obliteration/proc/attack_targets()
-	var/mob/living/living_target = targets_to_attack[1]
-	var/turf/new_turf = get_step_rand(living_target.loc)
+	var/atom/movable/target = targets_to_attack[1]
+	var/turf/new_turf = get_step_rand(target.loc)
 	for(var/turf/turf_to_check AS in get_line(xeno_owner.loc, new_turf) - xeno_owner.loc)
 		for(var/atom/atom_to_check AS in turf_to_check)
 			if(atom_to_check.CanPass(xeno_owner, turf_to_check))
-				new /obj/effect/temp_visual/conqueror/dash_trail(turf_to_check, get_dir(xeno_owner, living_target))
+				new /obj/effect/temp_visual/conqueror/dash_trail(turf_to_check, get_dir(xeno_owner, target))
 	playsound(new_turf, 'sound/effects/alien/behemoth/landslide_enhanced_charge.ogg', 8, TRUE)
-	playsound(living_target, 'sound/effects/alien/conqueror/will_kick.ogg', 40, TRUE)
-	new /obj/effect/temp_visual/conqueror/hook/punch(living_target.loc)
+	playsound(target, 'sound/effects/alien/conqueror/will_kick.ogg', 40, TRUE)
+	new /obj/effect/temp_visual/conqueror/hook/punch(target.loc)
 	xeno_owner.forceMove(new_turf)
-	living_target.do_jitter_animation(700, CONQUEROR_OBLITERATION_DEBUFF)
-	living_target.Immobilize(CONQUEROR_OBLITERATION_DEBUFF SECONDS)
-	living_target.adjust_stagger(CONQUEROR_OBLITERATION_DEBUFF)
-	living_target.adjust_slowdown(CONQUEROR_OBLITERATION_DEBUFF)
-	living_target.apply_damage((xeno_owner.xeno_caste.melee_damage * xeno_owner.xeno_melee_damage_modifier) * CONQUEROR_OBLITERATION_DAMAGE_MULTIPLIER, BRUTE, 0, MELEE, TRUE, TRUE, TRUE, xeno_owner.xeno_caste.melee_ap)
-	INVOKE_ASYNC(living_target, TYPE_PROC_REF(/mob, emote), "gored")
-	UnregisterSignal(living_target, list(COMSIG_QDELETING, COMSIG_MOB_DEATH, COMSIG_MOVABLE_Z_CHANGED))
-	targets_to_attack -= living_target
+	target.do_jitter_animation(700, CONQUEROR_OBLITERATION_DEBUFF)
+	if(isliving(target))
+		var/mob/living/living_target = target
+		living_target.Immobilize(CONQUEROR_OBLITERATION_DEBUFF SECONDS)
+		living_target.adjust_stagger(CONQUEROR_OBLITERATION_DEBUFF)
+		living_target.adjust_slowdown(CONQUEROR_OBLITERATION_DEBUFF)
+		living_target.apply_damage((xeno_owner.xeno_caste.melee_damage * xeno_owner.xeno_melee_damage_modifier) * CONQUEROR_OBLITERATION_DAMAGE_MULTIPLIER, BRUTE, 0, MELEE, TRUE, TRUE, TRUE, xeno_owner.xeno_caste.melee_ap)
+		INVOKE_ASYNC(living_target, TYPE_PROC_REF(/mob, emote), "gored")
+	else
+		///not a mob so its an obj
+		var/obj/obj_target = target
+		obj_target.take_damage((xeno_owner.xeno_caste.melee_damage * xeno_owner.xeno_melee_damage_modifier) * CONQUEROR_OBLITERATION_DAMAGE_MULTIPLIER, BRUTE, MELEE,TRUE, get_dir(xeno_owner, obj_target), xeno_owner.xeno_caste.melee_ap, xeno_owner)
+	UnregisterSignal(target, list(COMSIG_QDELETING, COMSIG_MOB_DEATH, COMSIG_MOVABLE_Z_CHANGED))
+	targets_to_attack -= target
 	if(length(targets_to_attack))
 		attack_timer = addtimer(CALLBACK(src, PROC_REF(attack_targets)), CONQUEROR_OBLITERATION_ATTACK_DELAY, TIMER_UNIQUE|TIMER_OVERRIDE|TIMER_STOPPABLE)
 		return
@@ -964,9 +1120,9 @@
 	if(!xeno_owner.canmove)
 		xeno_owner.set_canmove(TRUE)
 	if(length(targets_to_attack))
-		for(var/mob/living/ref_living AS in targets_to_attack)
-			UnregisterSignal(ref_living, list(COMSIG_QDELETING, COMSIG_MOB_DEATH, COMSIG_MOVABLE_Z_CHANGED))
-			targets_to_attack -= ref_living
+		for(var/atom/movable/ref_target AS in targets_to_attack)
+			UnregisterSignal(ref_target, list(COMSIG_QDELETING, COMSIG_MOB_DEATH, COMSIG_MOVABLE_Z_CHANGED))
+			targets_to_attack -= ref_target
 	targets_to_attack = list()
 	if(attack_timer)
 		deltimer(attack_timer)
@@ -975,6 +1131,7 @@
 	icon = 'icons/effects/160x160.dmi'
 	icon_state = "obliteration_warning"
 	mouse_opacity = MOUSE_OPACITY_TRANSPARENT
+	vis_flags = VIS_INHERIT_PLANE|VIS_INHERIT_LAYER
 	appearance_flags = TILE_BOUND
 	alpha = 0
 	layer = ABOVE_NORMAL_TURF_LAYER

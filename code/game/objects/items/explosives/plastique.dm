@@ -106,8 +106,9 @@
 
 		plant_target = target
 		if(ismovableatom(plant_target))
-			var/atom/movable/T = plant_target
-			T.vis_contents += src
+			var/atom/movable/mover = plant_target
+			mover.vis_contents += src
+			layer = ABOVE_ALL_MOB_LAYER
 		detonation_pending = addtimer(CALLBACK(src, PROC_REF(warning_sound), target, 'sound/items/countdown.ogg', 20, TRUE), ((timer*10) - 27), TIMER_STOPPABLE)
 		update_icon()
 
@@ -122,6 +123,7 @@
 		if(ismovableatom(plant_target))
 			var/atom/movable/T = plant_target
 			T.vis_contents -= src
+			layer = initial(layer)
 
 		forceMove(get_turf(user))
 		pixel_y = 0
@@ -183,7 +185,7 @@
 	icon_state = "genghis-charge"
 
 /obj/item/explosive/plastique/genghis_charge/afterattack(atom/target, mob/user, flag)
-	if(istype(target, /turf/closed/wall/resin))
+	if(target.allow_pass_flags & PASS_FIRE)
 		return ..()
 	if(istype(target, /obj/structure/mineral_door/resin))
 		return ..()
@@ -216,8 +218,8 @@
 			addtimer(CALLBACK(src, PROC_REF(spread_flames), direction, turf_to_check), rand(2, 7))
 
 ///Returns TRUE if the supplied turf has something we can ignite on, either a resin wall or door
-/obj/fire/flamer/autospread/proc/turf_contains_valid_burnable(turf_to_check)
-	if(istype(turf_to_check, /turf/closed/wall/resin))
+/obj/fire/flamer/autospread/proc/turf_contains_valid_burnable(turf/turf_to_check)
+	if(turf_to_check.allow_pass_flags & PASS_FIRE)
 		return TRUE
 	if(locate(/obj/structure/mineral_door/resin) in turf_to_check)
 		return TRUE

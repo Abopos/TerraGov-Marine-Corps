@@ -1,3 +1,5 @@
+#define DRAGON_GRABBED_ABILITY_TIME 1.5 SECONDS
+
 /datum/action/ability/activable/xeno/backhand
 	name = "Backhand"
 	action_icon_state = "backhand"
@@ -107,7 +109,7 @@
 	xeno_owner.move_resist = MOVE_FORCE_OVERPOWERING
 	xeno_owner.add_traits(list(TRAIT_HANDS_BLOCKED, TRAIT_IMMOBILE), DRAGON_ABILITY_TRAIT)
 	xeno_owner.visible_message(span_danger("[xeno_owner] lifts [grabbed_human] into the air and gets ready to slam!"))
-	if(do_after(xeno_owner, 3 SECONDS, IGNORE_HELD_ITEM, xeno_owner, BUSY_ICON_DANGER, extra_checks = CALLBACK(src, PROC_REF(grab_extra_check))))
+	if(do_after(xeno_owner, DRAGON_GRABBED_ABILITY_TIME, IGNORE_HELD_ITEM, xeno_owner, BUSY_ICON_DANGER, extra_checks = CALLBACK(src, PROC_REF(grab_extra_check))))
 		xeno_owner.face_atom(grabbed_human)
 		new /obj/effect/temp_visual/dragon/directional/backhand_slam(get_step(xeno_owner, grabbed_human), xeno_owner.dir)
 		xeno_owner.stop_pulling()
@@ -122,7 +124,7 @@
 					continue
 				animate(living_in_range, pixel_z = living_in_range.pixel_z + 8, time = 0.25 SECONDS, easing = CIRCULAR_EASING|EASE_OUT, flags = ANIMATION_END_NOW|ANIMATION_PARALLEL)
 				animate(pixel_z = living_in_range.pixel_z - 8, time = 0.25 SECONDS, easing = CIRCULAR_EASING|EASE_IN)
-		grabbed_human.take_overall_damage(get_damage() * 2.5, BRUTE, MELEE, max_limbs = 5, updating_health = TRUE) // 150
+		grabbed_human.take_overall_damage(get_damage() * 1.7, BRUTE, MELEE, max_limbs = 3, updating_health = TRUE) // 76.5
 		xeno_owner.gain_plasma(250)
 	xeno_owner.move_resist = initial(xeno_owner.move_resist)
 	xeno_owner.remove_traits(list(TRAIT_HANDS_BLOCKED, TRAIT_IMMOBILE), DRAGON_ABILITY_TRAIT)
@@ -139,11 +141,11 @@
 		return FALSE
 	var/obj/vehicle/affected_vehicle = affected_obj
 	if(ismecha(affected_vehicle))
-		affected_vehicle.take_damage(get_damage() * 3, BRUTE, MELEE, armour_penetration = 50, blame_mob = src)
+		affected_vehicle.take_damage(get_damage() * 3, BRUTE, MELEE, armour_penetration = 50, blame_mob = xeno_owner)
 	else if(isarmoredvehicle(affected_vehicle)) // Obtained from hitbox.
-		affected_vehicle.take_damage(get_damage() / 3, BRUTE, MELEE, blame_mob = src)
+		affected_vehicle.take_damage(get_damage() / 3, BRUTE, MELEE, blame_mob = xeno_owner)
 	else
-		affected_vehicle.take_damage(get_damage() * 2, BRUTE, MELEE, blame_mob = src)
+		affected_vehicle.take_damage(get_damage() * 2, BRUTE, MELEE, blame_mob = xeno_owner)
 	if(!(affected_vehicle in hit_vehicles) && vehicle_stun_length > 0)
 		for(var/mob/living/carbon/human/human_occupant in affected_vehicle.occupants)
 			human_occupant.apply_effect(vehicle_stun_length, EFFECT_PARALYZE)
@@ -369,13 +371,41 @@
 	var/ability_timer
 	/// The timer id for the timer that occurs every tick while the ability is active.
 	var/tick_timer
+	/// The typepath of what is to be created on each turf.
+	var/selected_typepath = /obj/fire/melting_fire
+	/// An image list for the fire selection's radical menu.
+	var/selectable_fire_images_list = list()
 
-/datum/action/ability/activable/xeno/backhand/dragon_breath/can_use_ability(atom/A, silent, override_flags)
-	if(ability_timer)
-		if(!silent)
-			xeno_owner.balloon_alert(xeno_owner, "already breathing fire")
-		return FALSE
-	return ..()
+/datum/action/ability/activable/xeno/backhand/dragon_breath/New()
+	. = ..()
+	selectable_fire_images_list[DRAGON_BREATH_MELTING] = image('icons/effects/fire.dmi', icon_state = "purple_3")
+
+/datum/action/ability/activable/xeno/backhand/dragon_breath/use_ability(atom/target)
+	if(!ability_timer)
+		return ..()
+	end_ability()
+
+/datum/action/ability/activable/xeno/backhand/dragon_breath/alternate_action_activate()
+	if(length(selectable_fire_images_list) <= 1 || ability_timer)
+		return
+	INVOKE_ASYNC(src, PROC_REF(switch_fire))
+	return COMSIG_KB_ACTIVATED
+
+/// Shows a radical menu that lets the owner choose which type of fire they want to use.
+/datum/action/ability/activable/xeno/backhand/dragon_breath/proc/switch_fire()
+	var/fire_choice = show_radial_menu(owner, owner, selectable_fire_images_list, radius = 35)
+	if(!fire_choice)
+		return
+	switch(fire_choice)
+		if(DRAGON_BREATH_MELTING)
+			selected_typepath = /obj/fire/melting_fire
+			to_chat(owner, span_xenonotice("Our breath will spew melting fire."))
+		if(DRAGON_BREATH_SHATTERING)
+			selected_typepath = /obj/fire/melting_fire/shattering
+			to_chat(owner, span_xenonotice("Our breath will spew shattering fire."))
+		if(DRAGON_BREATH_MELTING_ACID)
+			selected_typepath = /obj/fire/melting_fire/melting_acid
+			to_chat(owner, span_xenonotice("Our breath will spew acidic fire."))
 
 /datum/action/ability/activable/xeno/backhand/dragon_breath/get_damage()
 	return 20 * xeno_owner.xeno_melee_damage_modifier
@@ -385,20 +415,40 @@
 	xeno_owner.move_resist = MOVE_FORCE_OVERPOWERING
 	xeno_owner.add_traits(list(TRAIT_HANDS_BLOCKED, TRAIT_IMMOBILE), DRAGON_ABILITY_TRAIT)
 	xeno_owner.visible_message(span_danger("[xeno_owner] inhales and turns their sights to [grabbed_human]..."))
-	if(do_after(xeno_owner, 3 SECONDS, IGNORE_HELD_ITEM, xeno_owner, BUSY_ICON_DANGER, extra_checks = CALLBACK(src, PROC_REF(grab_extra_check))))
+	if(do_after(xeno_owner, DRAGON_GRABBED_ABILITY_TIME, IGNORE_HELD_ITEM, xeno_owner, BUSY_ICON_DANGER, extra_checks = CALLBACK(src, PROC_REF(grab_extra_check))))
 		xeno_owner.stop_pulling()
-		xeno_owner.visible_message(span_danger("[xeno_owner] exhales a massive fireball right ontop of [grabbed_human]!"))
-		new /obj/effect/temp_visual/dragon/grab_fire(get_turf(grabbed_human))
 		grabbed_human.emote("scream")
 		grabbed_human.Shake(duration = 0.5 SECONDS) // Must stop pulling first for Shake to work.
+		xeno_owner.visible_message(span_danger("[xeno_owner] exhales a massive fireball right ontop of [grabbed_human]!"))
 		playsound(get_turf(xeno_owner), 'sound/effects/alien/fireball.ogg', 50, 1)
-		new /obj/effect/temp_visual/xeno_fireball_explosion(get_turf(grabbed_human))
-		var/datum/status_effect/stacking/melting_fire/debuff = grabbed_human.has_status_effect(STATUS_EFFECT_MELTING_FIRE)
-		if(debuff)
-			debuff.add_stacks(10)
-		else
-			grabbed_human.apply_status_effect(STATUS_EFFECT_MELTING_FIRE, 10)
-		grabbed_human.take_overall_damage(get_damage() * 10, BURN, FIRE, max_limbs = length(grabbed_human.get_damageable_limbs()), updating_health = TRUE)
+		var/obj/effect/temp_visual/dragon/grab_fire/visual_grab_fire = new(get_turf(grabbed_human))
+		var/obj/effect/temp_visual/xeno_fireball_explosion/visual_fireball_explosion = new(get_turf(grabbed_human))
+		var/armor_type = BURN
+		switch(selected_typepath)
+			if(/obj/fire/melting_fire)
+				var/datum/status_effect/stacking/melting_fire/debuff = grabbed_human.has_status_effect(STATUS_EFFECT_MELTING_FIRE)
+				if(debuff)
+					debuff.add_stacks(10, xeno_owner) // 110 (avoidable / extinguishable)
+				else
+					grabbed_human.apply_status_effect(STATUS_EFFECT_MELTING_FIRE, 10)
+			if(/obj/fire/melting_fire/shattering)
+				visual_grab_fire.add_atom_colour("#ff000d", FIXED_COLOR_PRIORITY)
+				visual_fireball_explosion.add_atom_colour("#ff000d", FIXED_COLOR_PRIORITY)
+				var/datum/status_effect/stacking/melting_fire/debuff = grabbed_human.has_status_effect(STATUS_EFFECT_MELTING_FIRE)
+				if(debuff)
+					debuff.add_stacks(10, xeno_owner) // 110 (avoidable / extinguishable)
+				else
+					grabbed_human.apply_status_effect(STATUS_EFFECT_MELTING_FIRE, 10)
+			if(/obj/fire/melting_fire/melting_acid)
+				visual_grab_fire.add_atom_colour("#00ff15", FIXED_COLOR_PRIORITY)
+				visual_fireball_explosion.add_atom_colour("#00ff15", FIXED_COLOR_PRIORITY)
+				var/datum/status_effect/stacking/melting_acid/debuff = grabbed_human.has_status_effect(STATUS_EFFECT_MELTING_ACID)
+				if(debuff)
+					debuff.add_stacks(15) // 75 (unavoidable)
+				else
+					grabbed_human.apply_status_effect(STATUS_EFFECT_MELTING_ACID, 15)
+				armor_type = ACID
+		grabbed_human.take_overall_damage(get_damage() * 5.5, BURN, armor_type, max_limbs = length(grabbed_human.get_damageable_limbs()), updating_health = TRUE) // 110
 		grabbed_human.knockback(xeno_owner, 5, 1)
 		xeno_owner.gain_plasma(250)
 	xeno_owner.move_resist = initial(xeno_owner.move_resist)
@@ -413,8 +463,14 @@
 	xeno_owner.soft_armor = xeno_owner.soft_armor.modifyAllRatings(15)
 	ADD_TRAIT(xeno_owner, TRAIT_HANDS_BLOCKED, DRAGON_ABILITY_TRAIT)
 	RegisterSignal(xeno_owner, COMSIG_MOVABLE_MOVED, PROC_REF(on_move))
+	RegisterSignal(xeno_owner, COMSIG_MOB_STAT_CHANGED, PROC_REF(on_stat_changed))
 	starting_direction = get_cardinal_dir(xeno_owner, target)
 	visual_effect = new /obj/effect/temp_visual/dragon/fire_breath(get_step(xeno_owner, target), starting_direction)
+	switch(selected_typepath)
+		if(/obj/fire/melting_fire/shattering)
+			visual_effect.add_atom_colour("#ff000d", FIXED_COLOR_PRIORITY)
+		if(/obj/fire/melting_fire/melting_acid)
+			visual_effect.add_atom_colour("#00ff15", FIXED_COLOR_PRIORITY)
 	ability_timer = addtimer(CALLBACK(src, PROC_REF(end_ability)), 10 SECONDS, TIMER_STOPPABLE|TIMER_UNIQUE)
 	tick_effects(get_turf(target), affected_turfs, list())
 	return TRUE
@@ -438,7 +494,7 @@
 		affected_turfs_in_order += get_step(maximum_distance_turf, turn(xeno_owner.dir, 90))
 		affected_turfs_in_order += get_step(maximum_distance_turf, turn(xeno_owner.dir, -90))
 
-/// Performs the ability at a pace similar of CAS which is one width length at a length.
+/// Performs the ability at a pace similar of CAS which is one width length at a time.
 /datum/action/ability/activable/xeno/backhand/dragon_breath/proc/tick_effects()
 	xeno_owner.setDir(starting_direction) // To prevent them from spinning and looking funky while using this ability.
 	playsound(xeno_owner, SFX_GUN_FLAMETHROWER, 50, 1)
@@ -467,19 +523,30 @@
 			var/mob/living/affected_living = affected_atom
 			if(affected_living.stat == DEAD)
 				continue
-			affected_living.take_overall_damage(get_damage(), BURN, FIRE, updating_health = TRUE, penetration = 30, max_limbs = 5)
+
+			var/armor_type = BURN
+			if(selected_typepath == /obj/fire/melting_fire/melting_acid)
+				armor_type = ACID
+			affected_living.take_overall_damage(get_damage(), BURN, armor_type, updating_health = TRUE, penetration = 30, max_limbs = 5)
 			continue
 	tick_timer = addtimer(CALLBACK(src, PROC_REF(tick_effects)), 0.1 SECONDS, TIMER_STOPPABLE|TIMER_UNIQUE)
 
 /// Creates a melting fire if it does not exist. If it does, refresh it and affect all atoms in the same turf.
 /datum/action/ability/activable/xeno/backhand/dragon_breath/proc/refresh_or_create_fire(turf/target_turf)
-	var/obj/fire/melting_fire/fire_in_turf = locate(/obj/fire/melting_fire) in target_turf.contents
+	var/obj/fire/melting_fire/fire_in_turf = locate(selected_typepath) in target_turf.contents
 	if(!fire_in_turf)
-		new /obj/fire/melting_fire(target_turf)
+		new selected_typepath(target_turf)
 		return
 	fire_in_turf.burn_ticks = initial(fire_in_turf.burn_ticks)
 	for(var/something_in_turf in get_turf(fire_in_turf))
 		fire_in_turf.affect_atom(something_in_turf)
+
+/// Ends the ability if they are not conscious.
+/datum/action/ability/activable/xeno/backhand/dragon_breath/proc/on_stat_changed(datum/source, old_stat, new_stat)
+	SIGNAL_HANDLER
+	if(new_stat == CONSCIOUS)
+		return
+	end_ability()
 
 /// Undoes everything associated with starting the ability.
 /datum/action/ability/activable/xeno/backhand/dragon_breath/proc/end_ability()
@@ -487,7 +554,7 @@
 	xeno_owner.move_resist = initial(xeno_owner.move_resist)
 	xeno_owner.soft_armor = xeno_owner.soft_armor.modifyAllRatings(-15)
 	REMOVE_TRAIT(xeno_owner, TRAIT_HANDS_BLOCKED, DRAGON_ABILITY_TRAIT)
-	UnregisterSignal(xeno_owner, COMSIG_MOVABLE_MOVED)
+	UnregisterSignal(xeno_owner, list(COMSIG_MOVABLE_MOVED, COMSIG_MOB_STAT_CHANGED))
 	starting_direction = null
 	affected_turfs_in_order.Cut()
 	QDEL_NULL(visual_effect)
@@ -565,6 +632,10 @@
 				continue
 			if(!isobj(impacted_atom))
 				continue
+			if(isfire(impacted_atom))
+				var/obj/fire/fire = impacted_atom
+				fire.reduce_fire(20)
+				continue
 			if(!(impacted_atom.resistance_flags & XENO_DAMAGEABLE))
 				continue
 			var/obj/impacted_obj = impacted_atom
@@ -593,7 +664,6 @@
 	name = "Grab"
 	action_icon_state = "grab"
 	action_icon = 'icons/Xeno/actions/dragon.dmi'
-	desc = ""
 	desc = "After a windup, drag a marine in front of you and initiate a passive grab allowing you to drag them as you move. They are unable to move on their volition, but are fully capable of fighting back. Your grab automatically breaks if you stop grabbing or take too much damage."
 	cooldown_duration = 20 SECONDS
 	keybinding_signals = list(
@@ -859,6 +929,7 @@
 /obj/effect/temp_visual/dragon/warning/Initialize(mapload, _duration)
 	if(isnum(_duration))
 		duration = _duration
+	notify_ai_hazard()
 	return ..()
 
 /obj/effect/temp_visual/dragon/directional

@@ -37,7 +37,7 @@
 
 /obj/vehicle/ridden/hover_bike/update_overlays()
 	. = ..()
-	. += mutable_appearance(icon, "hover_bike_toplayer", MOB_UPPER_LAYER)
+	. += mutable_appearance(icon, "hover_bike_toplayer", TANK_DECORATION_LAYER)
 	. += mutable_appearance(icon, "hover_bike_midlayer", MOB_ABOVE_PIGGYBACK_LAYER)
 
 /obj/vehicle/ridden/hover_bike/post_unbuckle_mob(mob/living/M)
@@ -64,7 +64,7 @@
 	if(!LAZYLEN(buckled_mobs))
 		return
 
-	if(COOLDOWN_CHECK(src, enginesound_cooldown))
+	if(COOLDOWN_FINISHED(src, enginesound_cooldown))
 		COOLDOWN_START(src, enginesound_cooldown, 1.1 SECONDS)
 		playsound(get_turf(src), SFX_HOVER_TANK, 60, FALSE, 20)
 

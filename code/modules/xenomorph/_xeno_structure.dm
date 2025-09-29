@@ -17,8 +17,13 @@
 	. = ..()
 	if(!(xeno_structure_flags & IGNORE_WEED_REMOVAL))
 		RegisterSignal(loc, COMSIG_TURF_WEED_REMOVED, PROC_REF(weed_removed))
-	if(_hivenumber) ///because admins can spawn them
+	if(_hivenumber)
 		hivenumber = _hivenumber
+	else if(is_centcom_level(z) && hivenumber == XENO_HIVE_NORMAL) // For admins that want to play with it.
+		if(istype(get_area(src), /area/centcom/valhalla/xenocave))
+			hivenumber = XENO_HIVE_FALLEN
+		else
+			hivenumber = XENO_HIVE_ADMEME
 	LAZYADDASSOC(GLOB.xeno_structures_by_hive, hivenumber, src)
 	if(xeno_structure_flags & CRITICAL_STRUCTURE)
 		LAZYADDASSOC(GLOB.xeno_critical_structures_by_hive, hivenumber, src)
@@ -57,7 +62,7 @@
 
 ///Alerts the Hive when hostiles get too close to this structure
 /obj/structure/xeno/HasProximity(atom/movable/hostile)
-	if(!COOLDOWN_CHECK(src, proxy_alert_cooldown))
+	if(!COOLDOWN_FINISHED(src, proxy_alert_cooldown))
 		return
 
 	if(issamexenohive(hostile))
@@ -124,7 +129,7 @@
 
 ///Notifies the hive when we take damage
 /obj/structure/xeno/proc/damage_alert()
-	if(!COOLDOWN_CHECK(src, damage_alert_cooldown))
+	if(!COOLDOWN_FINISHED(src, damage_alert_cooldown))
 		return
 	threat_warning = TRUE
 	update_minimap_icon()

@@ -9,12 +9,7 @@
 	SEND_SIGNAL(owner, COMSIG_XENOMORPH_CORE_RETURN)
 	return ..()
 
-/datum/action/ability/activable/xeno/secrete_resin/hivemind/can_use_action(silent = FALSE, override_flags, selecting = FALSE)
-	if (owner.status_flags & INCORPOREAL)
-		return FALSE
-	return ..()
-
-/datum/action/ability/activable/xeno/secrete_special_resin/hivemind/can_use_action(silent = FALSE, override_flags, selecting = FALSE)
+/datum/action/ability/activable/xeno/secrete_resin/hivemind/can_use_action(silent, override_flags, selecting)
 	if (owner.status_flags & INCORPOREAL)
 		return FALSE
 	return ..()
@@ -68,7 +63,7 @@
 /datum/action/ability/activable/xeno/psychic_cure/queen_give_heal/hivemind
 	hivemind_heal = TRUE
 
-/datum/action/ability/activable/xeno/psychic_cure/queen_give_heal/hivemind/can_use_action(silent = FALSE, override_flags, selecting = FALSE)
+/datum/action/ability/activable/xeno/psychic_cure/queen_give_heal/hivemind/can_use_action(silent, override_flags, selecting)
 	if (owner.status_flags & INCORPOREAL)
 		return FALSE
 	return ..()
@@ -76,18 +71,18 @@
 /datum/action/ability/activable/xeno/transfer_plasma/hivemind
 	plasma_transfer_amount = PLASMA_TRANSFER_AMOUNT * 2
 
-/datum/action/ability/activable/xeno/transfer_plasma/hivemind/can_use_action(silent = FALSE, override_flags, selecting = FALSE)
+/datum/action/ability/activable/xeno/transfer_plasma/hivemind/can_use_action(silent, override_flags, selecting)
 	if (owner.status_flags & INCORPOREAL)
 		return FALSE
 	return ..()
 
-/datum/action/ability/xeno_action/pheromones/hivemind/can_use_action(silent = FALSE, override_flags)
+/datum/action/ability/xeno_action/pheromones/hivemind/can_use_action(silent, override_flags, selecting)
 	if (owner.status_flags & INCORPOREAL)
 		return FALSE
 	return ..()
 
-/datum/action/ability/xeno_action/watch_xeno/hivemind/can_use_action(silent = FALSE, override_flags)
-	if(TIMER_COOLDOWN_CHECK(owner, COOLDOWN_HIVEMIND_MANIFESTATION))
+/datum/action/ability/xeno_action/watch_xeno/hivemind/can_use_action(silent, override_flags, selecting)
+	if(TIMER_COOLDOWN_RUNNING(owner, COOLDOWN_HIVEMIND_MANIFESTATION))
 		return FALSE
 	return ..()
 
@@ -149,7 +144,7 @@
 	/// If we're waiting on player input. Used to prevent switching artillery mid-input.
 	var/waiting_on_player_input = FALSE
 
-/datum/action/ability/activable/xeno/shoot_xeno_artillery/can_use_action(silent = FALSE, override_flags)
+/datum/action/ability/activable/xeno/shoot_xeno_artillery/can_use_action(silent, override_flags, selecting)
 	. = ..()
 	if(!.)
 		return
@@ -161,7 +156,7 @@
 		if(!silent)
 			xeno_owner.balloon_alert(xeno_owner, "pick an artillery first!")
 		return FALSE
-	if(TIMER_COOLDOWN_CHECK(selected_artillery, COOLDOWN_MAW_GLOB))
+	if(TIMER_COOLDOWN_RUNNING(selected_artillery, COOLDOWN_MAW_GLOB))
 		if(!silent)
 			var/timeleft = S_TIMER_COOLDOWN_TIMELEFT(selected_artillery, COOLDOWN_MAW_GLOB)
 			xeno_owner.balloon_alert(xeno_owner, "cooldown: [timeleft/10] seconds")

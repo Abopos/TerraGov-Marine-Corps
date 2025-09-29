@@ -65,11 +65,11 @@
 		if(thrown_mob.mob_size >= mob_size)
 			apply_damage((thrown_mob.mob_size + 1 - mob_size) * speed, BRUTE, BODY_ZONE_CHEST, MELEE, updating_health = TRUE)
 		if(thrown_mob.mob_size <= mob_size)
-			thrown_mob.stop_throw()
+			thrown_mob.set_throwing(FALSE)
 			thrown_mob.apply_damage(speed, BRUTE, BODY_ZONE_CHEST, MELEE, updating_health = TRUE)
 	else if(isobj(AM))
 		var/obj/O = AM
-		O.stop_throw()
+		O.set_throwing(FALSE)
 		apply_damage(O.throwforce*(speed * 0.2), O.damtype, BODY_ZONE_CHEST, MELEE, is_sharp(O), has_edge(O), TRUE, O.penetration)
 
 	visible_message(span_warning("[src] has been hit by [AM]."), null, null, 5)
@@ -150,6 +150,14 @@
 	fire_stacks = 0
 	update_fire()
 	UnregisterSignal(src, COMSIG_LIVING_DO_RESIST)
+
+///Returns true if the mob is on fire
+/mob/living/proc/is_on_fire()
+	if(on_fire) //todo: someone please make normal fire a status effect
+		return TRUE
+	if(has_status_effect(STATUS_EFFECT_MELTING_FIRE))
+		return TRUE
+	return FALSE
 
 ///Updates fire visuals
 /mob/living/proc/update_fire()
@@ -236,7 +244,7 @@
 
 //Mobs on Fire end
 // When they are affected by a queens screech
-/mob/living/proc/screech_act(mob/living/carbon/xenomorph/queen/Q)
+/mob/living/proc/screech_act(distance, screech_range = WORLD_VIEW_NUM, within_sight = TRUE)
 	shake_camera(src, 3 SECONDS, 1)
 
 /mob/living/effect_smoke(obj/effect/particle_effect/smoke/S)

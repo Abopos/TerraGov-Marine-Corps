@@ -252,7 +252,7 @@
 	if(T.density)
 		to_chat(user, span_notice("You cannot climb out, the exit is blocked!"))
 		return
-	if(TIMER_COOLDOWN_CHECK(user, COOLDOWN_VENTCRAWL))
+	if(TIMER_COOLDOWN_RUNNING(user, COOLDOWN_VENTCRAWL))
 		return FALSE
 	var/silent_crawl = FALSE
 	var/vent_crawl_exit_time = 2 SECONDS
@@ -270,6 +270,7 @@
 	user.forceMove(T)
 	user.visible_message(span_warning("[user] climbs out of [src].</span>"), \
 	span_notice("You climb out of [src].</span>"))
+	log_game("[user] Crawled out of the [src] at [AREACOORD(src)]")
 	if(!silent_crawl)
 		playsound(src, SFX_ALIEN_VENTPASS, 35, TRUE)
 
@@ -298,7 +299,7 @@
 				if(isxeno(user))
 					var/mob/living/carbon/xenomorph/X = user
 					silent_crawl = X.xeno_caste.silent_vent_crawl
-				if(TIMER_COOLDOWN_CHECK(user, COOLDOWN_VENTSOUND) || silent_crawl)
+				if(TIMER_COOLDOWN_RUNNING(user, COOLDOWN_VENTSOUND) || silent_crawl)
 					return
 				TIMER_COOLDOWN_START(user, COOLDOWN_VENTSOUND, 3 SECONDS)
 				playsound(src, pick('sound/effects/alien/ventcrawl1.ogg','sound/effects/alien/ventcrawl2.ogg'), 50, TRUE, -3)
