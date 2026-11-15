@@ -1,9 +1,9 @@
 //based on the tesla turret (i gutted it)
 //code by tery so blame them
 
-#define TESLA_MAX_RANGE 5
-#define TESLA_MAX_TARGETS 7
-#define TESLA_DAMAGE 30
+#define TESLA_MAX_RANGE 7
+#define TESLA_MAX_TARGETS 12
+#define TESLA_DAMAGE 60
 #define TESLA_ARMOR_PIERCE 5
 #define TESLA_XENO_DAMAGE_MULTIPLIER 30 //GO MY NYMPH GIB-INATOR! GO AND FEAST ON THE MINIONS! ANNIHILATE THE T1s!
 
@@ -18,8 +18,8 @@
 	allow_pass_flags = PASSABLE
 	resistance_flags = RESIST_ALL
 	light_on = TRUE
-	light_range = 4
-	light_power = 2
+	light_range = 5
+	light_power = 6
 	light_color = COLOR_DARK_CYAN
 
 /obj/machinery/tesla_orb/Initialize(mapload)
