@@ -3,8 +3,9 @@
 
 #define TESLA_MAX_RANGE 5
 #define TESLA_MAX_TARGETS 7
-#define TESLA_COST_PASSIVE 1
-#define TESLA_COST_ACTIVE 1
+#define TESLA_DAMAGE 30
+#define TESLA_ARMOR_PIERCE 5
+#define TESLA_XENO_DAMAGE_MULTIPLIER 5
 
 /obj/machinery/tesla_orb
 	name = "mysterious orbs"
@@ -20,12 +21,6 @@
 	light_range = 4
 	light_power = 2
 	light_color = COLOR_DARK_CYAN
-	/// Range, duh.
-	var/max_range = TESLA_MAX_RANGE
-	/// Cost for having active but doing nothing
-	var/passive_cost = TESLA_COST_PASSIVE
-	/// Cost PER XENO to drain on shock
-	var/active_cost = TESLA_COST_ACTIVE
 
 /obj/machinery/tesla_orb/Initialize(mapload)
 	. = ..()
@@ -58,7 +53,7 @@
 		return
 
 /obj/machinery/tesla_orb/process()
-	var/targets = length(zap_all(src, max_range, 30, 0, TESLA_MAX_TARGETS))
+	var/targets = length(zap_all(src, TESLA_MAX_RANGE, TESLA_DAMAGE, TESLA_ARMOR_PIERCE, TESLA_XENO_DAMAGE_MULTIPLIER, TESLA_MAX_TARGETS))
 	if(!targets)
 		return
 	playsound(src, 'sound/weapons/guns/fire/tesla.ogg', 60, TRUE)
@@ -71,5 +66,7 @@
 	return ..()
 
 #undef TESLA_MAX_RANGE
-#undef TESLA_COST_PASSIVE
-#undef TESLA_COST_ACTIVE
+#undef TESLA_MAX_TARGETS
+#undef TESLA_DAMAGE
+#undef TESLA_ARMOR_PIERCE
+#undef TESLA_XENO_DAMAGE_MULTIPLIER

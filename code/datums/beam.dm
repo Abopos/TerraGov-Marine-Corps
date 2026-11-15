@@ -428,7 +428,7 @@
 
 /// shocks xenos, deals damage to marines and xenos, returns shocked mobs
 //code by tery so blame them
-/proc/zap_all(atom/source, zap_range, damage, armor_pierce, max_targets = INFINITY, beam_passflags = PASS_PROJECTILE|PASS_GLASS)
+/proc/zap_all(atom/source, zap_range, damage, armor_pierce, xeno_damage_multiplier = 1 max_targets = INFINITY, beam_passflags = PASS_PROJECTILE|PASS_GLASS)
 	var/list/targets = cheap_get_living_near(source, zap_range)
 	for(var/mob/living/target AS in targets)
 		if(target.stat == DEAD || (target.status_flags & (INCORPOREAL|GODMODE)))
@@ -456,6 +456,7 @@
 			victim.apply_status_effect(STATUS_EFFECT_NO_PLASMA_REGEN, 2 SECONDS)
 			victim.apply_status_effect(STATUS_EFFECT_PLASMA_DRAIN, 2 SECONDS)
 		victim.slowdown(0.5)
+		victim.apply_damage(damage * xeno_damage_multiplier, BURN, BODY_ZONE_CHEST, ENERGY, FALSE, FALSE, TRUE, armor_pierce)
 
 	//im too lazy so iterating over lists 3 times, this is only for like one event will fix later if atro decides to make this an actual map
 
