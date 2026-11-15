@@ -5,7 +5,7 @@
 #define TESLA_MAX_TARGETS 7
 #define TESLA_DAMAGE 30
 #define TESLA_ARMOR_PIERCE 5
-#define TESLA_XENO_DAMAGE_MULTIPLIER 5
+#define TESLA_XENO_DAMAGE_MULTIPLIER 30 //GO MY NYMPH GIB-INATOR! GO AND FEAST ON THE MINIONS! ANNIHILATE THE T1s!
 
 /obj/machinery/tesla_orb
 	name = "mysterious orbs"
@@ -53,7 +53,8 @@
 		return
 
 /obj/machinery/tesla_orb/process()
-	var/targets = length(zap_all(src, TESLA_MAX_RANGE, TESLA_DAMAGE, TESLA_ARMOR_PIERCE, TESLA_XENO_DAMAGE_MULTIPLIER, TESLA_MAX_TARGETS))
+	var/message = "You're shocked by lightning bolts from the [src]! Get away!"
+	var/targets = length(zap_all(src, TESLA_MAX_RANGE, TESLA_DAMAGE, TESLA_ARMOR_PIERCE, message, TESLA_XENO_DAMAGE_MULTIPLIER, TESLA_MAX_TARGETS))
 	if(!targets)
 		return
 	playsound(src, 'sound/weapons/guns/fire/tesla.ogg', 60, TRUE)
