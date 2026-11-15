@@ -34,7 +34,7 @@
 	. = ..()
 	if(!in_range(src, user))
 		return
-	. += span_warning("It seems to be volatile.")
+	. += span_warning("It seems to be very volatile.")
 
 /obj/machinery/tesla_orb/attack_hand_alternate(mob/living/user)
 	. = ..()
